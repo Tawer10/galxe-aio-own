@@ -24,8 +24,8 @@ def _get_headers(info: AccountInfo) -> dict:
         'accept-language': 'en;q=0.9',
         'authorization': 'Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA',
         'content-type': 'application/json',
-        'origin': 'https://mobile.twitter.com',
-        'referer': 'https://mobile.twitter.com/',
+        'origin': 'https://x.com',
+        'referer': 'https://x.com/',
         'sec-ch-ua': SEC_CH_UA,
         'sec-ch-ua-mobile': '?0',
         'sec-ch-ua-platform': SEC_CH_UA_PLATFORM,
@@ -105,8 +105,21 @@ class Twitter:
             self.account.twitter_error = True
             raise Exception(f'Failed to get ct0 for twitter: {reason}{str(e)}')
 
+    def check_response_errors(self, resp):
+        if type(resp) is not dict:
+            return
+        errors = resp.get('errors', [])
+        if type(errors) is not list:
+            return
+        if len(errors) == 0:
+            return
+        error_msg = ' | '.join([msg for msg in [err.get('message') for err in errors if type(err) is dict] if msg])
+        if len(error_msg) == 0:
+            return
+        raise Exception(error_msg)
+
     async def get_my_profile_info(self):
-        url = 'https://api.twitter.com/1.1/account/settings.json'
+        url = 'https://api.x.com/1.1/account/settings.json'
         params = {
             'include_mention_filter': 'true',
             'include_nsfw_user_flag': 'true',
