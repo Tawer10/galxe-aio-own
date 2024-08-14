@@ -26,14 +26,14 @@ from .client import Client
 from .fingerprint import fingerprints, captcha_retry
 from .utils import random_string_for_entropy
 from .models import Recurring, Credential, CredSource, ConditionRelation, QuizType, Gamification, GasType
-from .constants import DISCORD_AUTH_URL, GALXE_DISCORD_CLIENT_ID, CHAIN_NAME_MAPPING, VERIFY_TRIES
+from .constants import DISCORD_AUTH_URL, GALXE_DISCORD_CLIENT_ID, CHAIN_NAME_MAPPING, VERIFY_TRIES, QUIZ_CHOICES
 
 colorama.init()
 Faker.seed(int(time.time() * 1000))
 faker = Faker()
 faker_lock = asyncio.Lock()
 
-quiz_storage = Storage('storage/quizzes.json')
+quiz_storage = Storage(r'C:\Users\Валик\Documents\code\web3\drops\galxe-aio-main\storage\quizzes.json')
 quiz_storage.init()
 
 
@@ -342,7 +342,7 @@ class GalxeAccount:
                 campaign = await self.client.get_campaign_info(campaign['id'])
             await asyncio.sleep(5)
 
-        logger.info(f'{self.idx}) Completing main tasks')
+        # logger.info(f'{self.idx}) Completing main tasks')
 
         for i in range(max(VERIFY_TRIES, MAX_TRIES)):
 
@@ -381,6 +381,7 @@ class GalxeAccount:
                         ('Message: "None": Status = 200' in s_e and
                          'Galxe Web3 Score - Humanity Score' not in credential["name"])):
                     try_again = True
+
                 await log_long_exc(self.idx, f'Failed to complete "{credential["name"]}"', e, warning=True)
         return try_again
 
@@ -521,42 +522,36 @@ class GalxeAccount:
 
     def _default_sync_options(self, credential_id: str):
         return {
-            'address': self.client.address,
+            'address': self.client.full_address,
             'credId': credential_id,
         }
 
     async def solve_quiz(self, quiz):
         quiz_id = quiz['id']
         answers = await quiz_storage.get_value(quiz_id)
-        if answers is None:
-            quizzes = await self.client.read_quiz(quiz_id)
+        quizzes = await self.client.read_quiz(quiz_id)
+        correct = [False for _ in quizzes]
 
-            if any(q['type'] != QuizType.MULTI_CHOICE for q in quizzes):
-                raise Exception(f"Can't solve quiz with not multi-choice items: {quiz_id}")
+        try:
+            answers = [QUIZ_CHOICES[answer] if len(answer) == 1 else answer for answer in answers]
+        except:
+            pass
 
-            answers = [-1 for _ in quizzes]
-            correct = [False for _ in quizzes]
-
-            while not all(correct):
-                answers = [answers[i] if correct[i] else answers[i] + 1 for i in range(len(answers))]
-                if any(a >= len(quizzes[i]['items']) for i, a in enumerate(answers)):
-                    raise Exception(f"Can't find answers for {quiz['name']}")
-
-                logger.info(f'{self.idx}) {quiz["name"]} attempt to answer with {answers}')
-                sync_options = self._default_sync_options(quiz_id)
-                sync_options.update({'quiz': {'answers': [str(a) for a in answers]}})
-
-                result = await self.client.sync_credential_value(sync_options, only_allow=False, quiz=True)
-                correct = result['quiz']['correct']
-
-            logger.success(f'{self.idx}) {quiz["name"]} solved')
-            await quiz_storage.set_value(quiz_id, answers)
-            await quiz_storage.async_save()
-        else:
+        while not all(correct):
+            # logger.info(f'{self.idx}) {quiz["name"]} attempt to answer with {answers}')
             sync_options = self._default_sync_options(quiz_id)
             sync_options.update({'quiz': {'answers': [str(a) for a in answers]}})
-            await self.client.sync_credential_value(sync_options, quiz=True)
-            logger.success(f'{self.idx}) {quiz["name"]} answers restored and verified')
+            result = await self.client.sync_credential_value(sync_options, only_allow=False, quiz=True)
+            correct = result['quiz']['correct']
+
+        logger.success(f'{self.idx}) {quiz["name"]} solved')
+        await quiz_storage.set_value(quiz_id, answers)
+        await quiz_storage.async_save()
+
+        # sync_options = self._default_sync_options(quiz_id)
+        # sync_options.update({'quiz': {'answers': [str(a) for a in answers]}})
+        # await self.client.sync_credential_value(sync_options, quiz=True)
+        # logger.success(f'{self.idx}) {quiz["name"]} answers restored and verified')
 
     async def _complete_survey(self, campaign_id, survey):
         survey_id = survey['id']
@@ -664,7 +659,7 @@ class GalxeAccount:
                     discord_role_info = ' and discord role claimed'
                 case Gamification.TOKEN:
                     raffle_info = ' and participated in raffle'
-            logger.info(f'{self.idx}) {campaign["name"]} already claimed '
+            logger.success(f'{self.idx}) {campaign["name"]} already claimed '
                         f'{self.account.points[campaign["id"]][1]} points'
                         f'{nft_info}{bounty_info}{discord_role_info}{raffle_info}')
             return
